@@ -1,0 +1,4 @@
+psycopg2-binary>=2.9
+sqlparse>=0.4
+Faker>=24.0
+mcp[cli]>=1.27,<2

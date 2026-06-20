@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "postgres-mcp": {
+      "command": "python",
+      "args": ["c:/Balaji/MyProjects/postgres-mcp/mcp_server.py"],
+      "cwd": "c:/Balaji/MyProjects/postgres-mcp",
+      "env": {}
+    }
+  }
+}
