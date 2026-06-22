@@ -23,7 +23,8 @@ class ConfigManager:
             c["profile_local"] = {
                 "name": "Local PostgreSQL", "host": "localhost",
                 "port": "5432", "database": "postgres",
-                "username": "postgres", "password": "", "ssl_mode": "prefer",
+                "username": "postgres", "password": "",
+                "ssl_mode": "prefer", "schema": "public",
             }
             with open(CONFIG_FILE, "w") as f:
                 c.write(f)
@@ -51,6 +52,7 @@ class ConfigManager:
                     "port": g("port", "5432"), "database": g("database", "postgres"),
                     "username": g("username"), "password": g("password"),
                     "ssl_mode": g("ssl_mode", "prefer"),
+                    "schema": g("schema", "public"),
                 }
         return profiles
 

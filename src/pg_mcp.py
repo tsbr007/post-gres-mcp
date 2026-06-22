@@ -38,7 +38,30 @@ import sys
 import os
 import time
 import re
+import pathlib
 from typing import Any
+
+
+# ── Load system instructions from external text file ──────────────────────────
+
+def _load_instructions() -> str:
+    """
+    Load the MCP system instructions from mcp_instructions.txt located in the
+    same directory as this file.  Falls back to a short inline string when the
+    file cannot be found, so the server always starts.
+    """
+    instructions_path = pathlib.Path(__file__).parent / "mcp_instructions.txt"
+    try:
+        return instructions_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return (
+            "You are a PostgreSQL expert assistant. Use the provided MCP tools "
+            "to analyse stored procedures, trace recursive SQL chains, generate "
+            "constraint-safe test data with Faker, and manage a test transaction "
+            "lifecycle (begin / insert / commit or rollback). "
+            "Never commit without explicit operator approval. "
+            f"[WARNING: {instructions_path} not found — using fallback instructions.]"
+        )
 
 import psycopg2
 import psycopg2.extras
@@ -49,31 +72,13 @@ from mcp.server.fastmcp import FastMCP
 _conn: psycopg2.extensions.connection | None = None   # main read connection
 _tx:   psycopg2.extensions.connection | None = None   # open test transaction
 _tx_rows_inserted: int = 0
+_default_schema: str = "public"   # set from profile/args on connect
 
 
 # ── FastMCP server instance ────────────────────────────────────────────────────
 mcp = FastMCP(
     "postgres-mcp",
-    instructions=(
-        "You are a PostgreSQL expert assistant. "
-        "Use the provided tools to:\n"
-        "1. Load an SP body (get_sp_body) or analyse uploaded SQL text.\n"
-        "2. Execute any SELECT queries found in the SP (execute_query).\n"
-        "3. Inspect column values in results — if any value looks like a SQL "
-        "   statement (SELECT / INSERT / DELETE / WITH ...), execute it too "
-        "   (execute_query for reads, execute_in_transaction for writes).\n"
-        "4. Recurse until you have traced the full data dependency chain.\n"
-        "5. Identify all tables that need test data (via get_table_schema, "
-        "   get_fk_reference_values, get_enum_values, get_view_definition).\n"
-        "6. Call begin_test_transaction(), then insert_rows() per table "
-        "   (respect FK order — insert parents before children).\n"
-        "7. Tell the user to run their SP / verify results.\n"
-        "8. Wait for the user to say 'commit' or 'rollback', then call the "
-        "   appropriate tool.\n"
-        "IMPORTANT: All inserts via insert_rows() or execute_in_transaction() "
-        "are inside a database transaction that is NOT committed until the "
-        "user explicitly says so. Always confirm before committing."
-    ),
+    instructions=_load_instructions(),
 )
 
 
@@ -124,7 +129,7 @@ def _connect_dsn(dsn: str) -> None:
 
 
 def _connect_profile(profile: dict) -> None:
-    global _conn
+    global _conn, _default_schema
     if _conn and not _conn.closed:
         _conn.close()
     _conn = psycopg2.connect(
@@ -135,6 +140,7 @@ def _connect_profile(profile: dict) -> None:
         connect_timeout=10,
     )
     _conn.autocommit = True
+    _default_schema = profile.get("schema", "public")
 
 
 # ── Connection tools ──────────────────────────────────────────────────────────
@@ -147,34 +153,37 @@ def connect_to_postgres(
     username: str = "postgres",
     password: str = "",
     ssl_mode: str = "prefer",
+    schema: str = "public",
 ) -> str:
     """
     Connect to a PostgreSQL database.
+    'schema' sets the default schema used by list_sps, list_tables, list_views, etc.
     Returns server version on success.
     """
     global _conn
     try:
         _connect_profile({
             "host": host, "port": str(port), "database": database,
-            "username": username, "password": password, "ssl_mode": ssl_mode,
+            "username": username, "password": password,
+            "ssl_mode": ssl_mode, "schema": schema,
         })
         with _conn.cursor() as cur:
             cur.execute("SELECT version();")
             ver = cur.fetchone()[0]
-        return f"Connected. {ver}"
+        return f"Connected. Default schema: '{_default_schema}'. {ver}"
     except Exception as e:
         return f"ERROR: {e}"
 
 
 @mcp.tool()
 def get_connection_status() -> str:
-    """Return whether a database connection is currently open."""
+    """Return whether a database connection is currently open, including the default schema."""
     if _conn and not _conn.closed:
         try:
             with _conn.cursor() as cur:
                 cur.execute("SELECT current_database(), current_user, inet_server_addr(), inet_server_port();")
                 db, user, addr, port = cur.fetchone()
-            return f"Connected — db={db}, user={user}, server={addr}:{port}"
+            return f"Connected — db={db}, user={user}, server={addr}:{port}, schema={_default_schema}"
         except Exception:
             pass
     return "Not connected."
@@ -681,6 +690,7 @@ def run_server(argv: list[str]) -> None:
     parser.add_argument("--db",      default="postgres")
     parser.add_argument("--user",    default="postgres")
     parser.add_argument("--password",default="")
+    parser.add_argument("--schema",  default="public", help="Default schema (default: public)")
     args = parser.parse_args(argv)
 
     # Auto-connect if params given
@@ -703,6 +713,7 @@ def run_server(argv: list[str]) -> None:
                 "host": args.host, "port": args.port,
                 "database": args.db, "username": args.user,
                 "password": args.password, "ssl_mode": "prefer",
+                "schema": args.schema,
             })
         else:
             # Try default profile from config.ini

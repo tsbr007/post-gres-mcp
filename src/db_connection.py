@@ -18,6 +18,7 @@ class DatabaseConnection:
     def __init__(self):
         self.conn = None
         self.profile = None
+        self.default_schema: str = "public"   # set from profile on connect
         self._tx_conn = None          # Open transaction for test data
 
     # ── Main connection ────────────────────────────────────────────────
@@ -26,6 +27,7 @@ class DatabaseConnection:
         self.conn = _connect(profile)
         self.conn.autocommit = True
         self.profile = profile
+        self.default_schema = profile.get("schema", "public")
 
     def test_connection(self, profile):
         try:
@@ -46,6 +48,7 @@ class DatabaseConnection:
                 pass
             self.conn = None
             self.profile = None
+            self.default_schema = "public"
 
     def is_connected(self):
         return self.conn is not None and not self.conn.closed

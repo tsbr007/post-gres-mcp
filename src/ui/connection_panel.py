@@ -43,7 +43,7 @@ class ConnectionPanel(ttk.Frame):
             ("Profile Name", "name"), ("Host",     "host"),
             ("Port",         "port"), ("Database", "database"),
             ("Username",     "username"), ("Password", "password"),
-            ("SSL Mode",     "ssl_mode"),
+            ("SSL Mode",     "ssl_mode"), ("Schema",   "schema"),
         ]
         self._vars: dict[str, tk.StringVar] = {}
         form = ttk.Frame(self)
@@ -93,9 +93,10 @@ class ConnectionPanel(ttk.Frame):
 
     def _new_profile(self):
         section = self.cfg.new_section_key()
+        defaults = {"host": "localhost", "port": "5432",
+                    "ssl_mode": "prefer", "schema": "public"}
         for key, var in self._vars.items():
-            var.set("" if key not in ("host", "port", "ssl_mode") else
-                    {"host": "localhost", "port": "5432", "ssl_mode": "prefer"}[key])
+            var.set(defaults.get(key, ""))
         self._current_section = section
 
     def _save_profile(self):
