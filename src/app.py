@@ -10,6 +10,7 @@ from src.ui.object_explorer import ObjectExplorer
 from src.ui.query_editor import QueryEditor
 from src.ui.result_grid import ResultGrid
 from src.ui.sp_analyzer_panel import SPAnalyzerPanel
+from src.ui.token_estimator_panel import TokenEstimatorPanel
 
 
 class PostgresManagerApp(tk.Tk):
@@ -87,6 +88,10 @@ class PostgresManagerApp(tk.Tk):
             right_nb, self.db, self.cfg, self.status_bar
         )
         right_nb.add(self.sp_panel, text="🧪 SP Analyzer / Test Data")
+
+        # Tab 3: Token Estimator
+        self.token_panel = TokenEstimatorPanel(right_nb)
+        right_nb.add(self.token_panel, text="📊 Token Estimator")
 
     def _build_menu(self):
         mb = tk.Menu(self)

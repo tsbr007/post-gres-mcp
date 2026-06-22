@@ -1,6 +1,7 @@
 """
-SP Analyzer Panel — upload SQL file, reverse-engineer SELECT queries,
-generate test data, allow preview/edit, insert with manual commit/rollback.
+SP Analyzer Panel — load an SP via file browse OR paste it directly,
+reverse-engineer SELECT queries, generate test data, allow preview/edit,
+insert with manual commit/rollback.
 """
 import threading
 import tkinter as tk
@@ -22,15 +23,43 @@ class SPAnalyzerPanel(ttk.Frame):
     # ── Layout ────────────────────────────────────────────────────────────────
 
     def _build(self):
-        # ── Row 0: File upload bar ─────────────────────────────────────────
-        top = ttk.LabelFrame(self, text="1  Upload SQL File")
+        # ── Row 0: SP Input (file OR paste) ───────────────────────────────
+        top = ttk.LabelFrame(self, text="1  Stored Procedure Input")
         top.pack(fill="x", padx=8, pady=6)
 
+        self._input_nb = ttk.Notebook(top)
+        self._input_nb.pack(fill="both", expand=True, padx=4, pady=4)
+
+        # ── Tab A: Browse file ─────────────────────────────────────────────
+        file_tab = ttk.Frame(self._input_nb)
+        self._input_nb.add(file_tab, text="  📂 Browse File  ")
+
         self._file_var = tk.StringVar(value="No file selected")
-        ttk.Label(top, textvariable=self._file_var, width=55,
-                  anchor="w", relief="sunken").pack(side="left", padx=4, pady=4)
-        ttk.Button(top, text="📂 Browse…", command=self._browse).pack(side="left", padx=2)
-        ttk.Button(top, text="🔍 Analyse", command=self._analyse).pack(side="left", padx=2)
+        ttk.Label(file_tab, textvariable=self._file_var, width=58,
+                  anchor="w", relief="sunken").pack(side="left", padx=4, pady=6)
+        ttk.Button(file_tab, text="Browse…", command=self._browse).pack(side="left", padx=2)
+
+        # ── Tab B: Paste SQL ───────────────────────────────────────────────
+        paste_tab = ttk.Frame(self._input_nb)
+        self._input_nb.add(paste_tab, text="  📋 Paste SQL  ")
+
+        paste_btn_row = ttk.Frame(paste_tab)
+        paste_btn_row.pack(fill="x", padx=4, pady=(4, 2))
+        ttk.Label(paste_btn_row, text="Paste or type your stored procedure here:",
+                  foreground="#555").pack(side="left")
+        ttk.Button(paste_btn_row, text="Clear",
+                   command=self._clear_paste).pack(side="right", padx=2)
+
+        self._paste_editor = scrolledtext.ScrolledText(
+            paste_tab, height=6, font=("Courier New", 9),
+            relief="sunken", undo=True,
+        )
+        self._paste_editor.pack(fill="both", expand=True, padx=4, pady=(0, 4))
+
+        # ── Analyse button (shared, below the notebook) ────────────────────
+        btn_row = ttk.Frame(top)
+        btn_row.pack(fill="x", padx=4, pady=(0, 4))
+        ttk.Button(btn_row, text="🔍 Analyse", command=self._analyse).pack(side="left", padx=2)
 
         # ── Row 1: Analysis results (tables + conditions) ──────────────────
         mid = ttk.LabelFrame(self, text="2  Analysis — Detected Tables & Conditions")
@@ -104,11 +133,26 @@ class SPAnalyzerPanel(ttk.Frame):
                 self._sql_text = f.read()
             self._log_write(f"Loaded: {path} ({len(self._sql_text)} chars)")
 
+    def _clear_paste(self):
+        self._paste_editor.delete("1.0", "end")
+
+    def _get_active_sql(self) -> str:
+        """Return SQL from whichever input tab is currently selected."""
+        active = self._input_nb.index(self._input_nb.select())
+        if active == 1:          # Paste SQL tab
+            return self._paste_editor.get("1.0", "end-1c").strip()
+        return self._sql_text    # Browse File tab
+
     def _analyse(self):
-        if not self._sql_text:
-            messagebox.showwarning("No file", "Please browse and select a SQL file first.")
+        sql = self._get_active_sql()
+        if not sql:
+            messagebox.showwarning(
+                "No SQL",
+                "Please browse and select a SQL file, or paste your SP text into the 'Paste SQL' tab.",
+            )
             return
-        self._log_write("Analysing SQL…")
+        self._sql_text = sql          # keep in sync regardless of source
+        self._log_write(f"Analysing SQL ({len(sql)} chars)…")
         try:
             from src.sql_parser import analyse_sql_file
             self._analysis = analyse_sql_file(self._sql_text)
